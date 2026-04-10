@@ -344,8 +344,24 @@
       "action": "output"
     },
     {
-      "type": "surgeRuleSet",
-      "action": "output"
-    }
-  ]
-}
+      "type": "singboxSRS",
+      "action": "output",
+      "args": {
+        "outputDir": "./output",
+        "outputName": "!cn.srs",
+        "excludedList": [
+          "cn",
+          "private",
+          "telegram",
+          "google",
+          "facebook",
+          "twitter",
+          "netflix",
+          "fastly",
+          "cloudflare",
+          "cloudfront",
+          "tor"
+     ]
+   }
+ }
+ 
