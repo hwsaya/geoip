@@ -34,20 +34,29 @@ jobs:
       - name: Download GeoLite2 databases from Mirror
         run: |
           mkdir -p output
-          # 使用 P3TERX 的镜像下载官方格式的 ZIP 包
-          curl -L "https://github.com/P3TERX/GeoLite.mmdb/releases/download/download/GeoLite2-Country-CSV.zip" -o ./output/GeoLite2-Country-CSV.zip
-          curl -L "https://github.com/P3TERX/GeoLite.mmdb/releases/download/download/GeoLite2-ASN-CSV.zip" -o ./output/GeoLite2-ASN-CSV.zip
+          # 使用 jsDelivr 加速下载 P3TERX 维护的官方格式 ZIP 包
+          curl -L "https://cdn.jsdelivr.net/gh/P3TERX/GeoLite.mmdb@download/GeoLite2-Country-CSV.zip" -o ./output/GeoLite2-Country-CSV.zip
+          curl -L "https://cdn.jsdelivr.net/gh/P3TERX/GeoLite.mmdb@download/GeoLite2-ASN-CSV.zip" -o ./output/GeoLite2-ASN-CSV.zip
 
       - name: Prepare GeoLite2 databases
         run: |
-          # 解压并整理文件路径，以适配 config.json
           mkdir -p geolite2
-          unzip ./output/GeoLite2-Country-CSV.zip -d ./
-          unzip ./output/GeoLite2-ASN-CSV.zip -d ./
+          # 解压到临时目录
+          unzip -o ./output/GeoLite2-Country-CSV.zip -d ./temp_country
+          unzip -o ./output/GeoLite2-ASN-CSV.zip -d ./temp_asn
           
-          # 将解压出来的带日期后缀的文件夹里的 CSV 移动到 geolite2 根目录
-          mv GeoLite2-Country-CSV_*/*.csv ./geolite2/
-          mv GeoLite2-ASN-CSV_*/*.csv ./geolite2/
+          # 查找解压出的 CSV 文件并移动到 geolite2 文件夹
+          # 这样写可以无视文件夹里的日期后缀（如 GeoLite2-Country-CSV_20260407）
+          find ./temp_country -name "*.csv" -exec mv {} ./geolite2/ \;
+          find ./temp_asn -name "*.csv" -exec mv {} ./geolite2/ \;
+          
+          # 清理临时目录
+          rm -rf temp_country temp_asn
+
+      - name: Build geoip files
+        run: |
+          go build ./
+          ./geoip convert -c ./config.json
 
       - name: Build geoip files
         run: |
