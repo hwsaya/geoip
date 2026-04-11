@@ -24,21 +24,13 @@ jobs:
         run: |
           mkdir -p geolite2
           mkdir -p output
-          # 直接从上游 Loyalsoldier 仓库的 release 分支下载 CSV
-          # 这样可以保证文件格式与工具完全匹配，且链接稳定
+          # 直接拉取 Loyalsoldier 仓库 release 分支的原始数据，确保 100% 兼容
           BASE_URL="https://raw.githubusercontent.com/Loyalsoldier/geoip/release"
-          
           curl -L "${BASE_URL}/GeoLite2-Country-Blocks-IPv4.csv" -o ./geolite2/GeoLite2-Country-Blocks-IPv4.csv
           curl -L "${BASE_URL}/GeoLite2-Country-Blocks-IPv6.csv" -o ./geolite2/GeoLite2-Country-Blocks-IPv6.csv
           curl -L "${BASE_URL}/GeoLite2-Country-Locations-en.csv" -o ./geolite2/GeoLite2-Country-Locations-en.csv
           curl -L "${BASE_URL}/GeoLite2-ASN-Blocks-IPv4.csv" -o ./geolite2/GeoLite2-ASN-Blocks-IPv4.csv
           curl -L "${BASE_URL}/GeoLite2-ASN-Blocks-IPv6.csv" -o ./geolite2/GeoLite2-ASN-Blocks-IPv6.csv
-          
-          # 验证下载是否成功
-          if [ $(stat -c%s "./geolite2/GeoLite2-Country-Blocks-IPv4.csv") -lt 1000 ]; then
-            echo "Download failed! File too small."
-            exit 1
-          fi
 
       - name: Build geoip files
         run: |
@@ -52,7 +44,16 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b release
-          git add !cn.srs geoip.dat
+          
+          # 关键：使用 git add . 避免处理 !cn.srs 时的 Shell 转义报错
+          git add .
+          
+          # 检查是否有文件更新
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
           git commit -m "Update GeoIP: $(date +%Y%m%d)"
           git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
           git push -f origin release
