@@ -61,6 +61,14 @@
         "outputName": "!cn.srs",
         "excludedList": ["cn", "private"]
       }
-    }    
+    },
+    {
+      "type": "v2rayGeoIPDat",
+      "action": "output",
+      "args": {
+        "outputDir": "./output",
+        "outputName": "geoip.dat"
+      }
+    }
   ]
 }
