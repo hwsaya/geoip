@@ -6,10 +6,7 @@ on:
   push:
     branches:
       - master
-    paths-ignore:
-      - ".gitignore"
-      - "LICENSE*"
-      - "*.md"
+
 jobs:
   build:
     name: Build
@@ -17,65 +14,36 @@ jobs:
     steps:
       - name: Checkout codebase
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: ./go.mod
 
-      - name: Set variables
+      - name: Download GeoLite2 CSV from Upstream
         run: |
-          echo "TAG_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
-          echo "RELEASE_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Download GeoLite2 databases from Mirror
-        run: |
+          mkdir -p geolite2
           mkdir -p output
-          # 使用 P3TERX 的原生 GitHub Release 链接，不走 jsDelivr
-          curl -L "https://github.com/P3TERX/GeoLite.mmdb/releases/download/download/GeoLite2-Country-CSV.zip" -o ./output/GeoLite2-Country-CSV.zip
-          curl -L "https://github.com/P3TERX/GeoLite.mmdb/releases/download/download/GeoLite2-ASN-CSV.zip" -o ./output/GeoLite2-ASN-CSV.zip
+          # 直接从上游 Loyalsoldier 仓库的 release 分支下载 CSV
+          # 这样可以保证文件格式与工具完全匹配，且链接稳定
+          BASE_URL="https://raw.githubusercontent.com/Loyalsoldier/geoip/release"
           
-          # 检查文件大小：如果小于 1MB，说明下载的是错误页面
-          COUNTRY_SIZE=$(stat -c%s "./output/GeoLite2-Country-CSV.zip")
-          if [ $COUNTRY_SIZE -lt 1048576 ]; then
-            echo "Error: GeoLite2-Country-CSV.zip is too small ($COUNTRY_SIZE bytes), download failed!"
+          curl -L "${BASE_URL}/GeoLite2-Country-Blocks-IPv4.csv" -o ./geolite2/GeoLite2-Country-Blocks-IPv4.csv
+          curl -L "${BASE_URL}/GeoLite2-Country-Blocks-IPv6.csv" -o ./geolite2/GeoLite2-Country-Blocks-IPv6.csv
+          curl -L "${BASE_URL}/GeoLite2-Country-Locations-en.csv" -o ./geolite2/GeoLite2-Country-Locations-en.csv
+          curl -L "${BASE_URL}/GeoLite2-ASN-Blocks-IPv4.csv" -o ./geolite2/GeoLite2-ASN-Blocks-IPv4.csv
+          curl -L "${BASE_URL}/GeoLite2-ASN-Blocks-IPv6.csv" -o ./geolite2/GeoLite2-ASN-Blocks-IPv6.csv
+          
+          # 验证下载是否成功
+          if [ $(stat -c%s "./geolite2/GeoLite2-Country-Blocks-IPv4.csv") -lt 1000 ]; then
+            echo "Download failed! File too small."
             exit 1
           fi
 
-      - name: Prepare GeoLite2 databases
-        run: |
-          mkdir -p geolite2
-          # 强制覆盖解压
-          unzip -o ./output/GeoLite2-Country-CSV.zip -d ./temp_country
-          unzip -o ./output/GeoLite2-ASN-CSV.zip -d ./temp_asn
-          
-          # 递归查找所有 CSV 文件并移动到 geolite2 目录，同时统一文件名
-          find ./temp_country -name "GeoLite2-Country-Blocks-IPv4.csv" -exec mv {} ./geolite2/GeoLite2-Country-Blocks-IPv4.csv \;
-          find ./temp_country -name "GeoLite2-Country-Blocks-IPv6.csv" -exec mv {} ./geolite2/GeoLite2-Country-Blocks-IPv6.csv \;
-          find ./temp_country -name "GeoLite2-Country-Locations-en.csv" -exec mv {} ./geolite2/GeoLite2-Country-Locations-en.csv \;
-          find ./temp_asn -name "GeoLite2-ASN-Blocks-IPv4.csv" -exec mv {} ./geolite2/GeoLite2-ASN-Blocks-IPv4.csv \;
-          find ./temp_asn -name "GeoLite2-ASN-Blocks-IPv6.csv" -exec mv {} ./geolite2/GeoLite2-ASN-Blocks-IPv6.csv \;
-          
-          rm -rf temp_country temp_asn
-
       - name: Build geoip files
         run: |
           go build ./
           ./geoip convert -c ./config.json
-
-      - name: Build geoip files
-        run: |
-          go build ./
-          ./geoip convert -c ./config.json
-
-      - name: Generate sha256 checksum
-        run: |
-          cd ./output || exit 1
-          # 为生成的所有规则文件生成校验和
-          find . -maxdepth 1 -type f \( -name "*.dat" -o -name "*.srs" -o -name "*.mrs" \) -exec sh -c 'sha256sum "$1" > "$1.sha256sum"' _ {} \;
 
       - name: Git push assets to "release" branch
         run: |
@@ -84,16 +52,7 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b release
-          git add -A
-          git commit -m "${{ env.RELEASE_NAME }}"
-          git remote add geoip "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
-          git push -f -u geoip release
-
-      - name: Upload files to GitHub release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file_glob: true
-          file: ./output/*
-          release_name: ${{ env.RELEASE_NAME }}
-          tag: ${{ env.TAG_NAME }}
+          git add !cn.srs geoip.dat
+          git commit -m "Update GeoIP: $(date +%Y%m%d)"
+          git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+          git push -f origin release
