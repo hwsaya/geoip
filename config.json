@@ -21,7 +21,17 @@
       "action": "add",
       "args": {
         "name": "cn",
-        "uri": "https://raw.githubusercontent.com/gaoyifan/china-operator-ip/ip-lists/china.txt"
+        "uri": "https://raw.githubusercontent.com/gaoyifan/china-operator-ip/ip-lists/china.txt",
+        "onlyIPType": "ipv4"
+      }
+    },
+    {
+      "type": "text",
+      "action": "add",
+      "args": {
+        "name": "cn",
+        "uri": "https://raw.githubusercontent.com/gaoyifan/china-operator-ip/ip-lists/china6.txt",
+        "onlyIPType": "ipv6"
       }
     },
     {
@@ -31,11 +41,10 @@
   ],
   "output": [
     {
-      "type": "singboxSRS",
+      "type": "text",
       "action": "output",
       "args": {
-        "outputDir": "./output",
-        "outputName": "no-cn.srs",
+        "outputDir": "./output/text",
         "excludedList": ["cn", "private"]
       }
     }
