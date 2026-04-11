@@ -1,6 +1,8 @@
 name: Build geoip files
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
   push:
     branches:
       - master
@@ -45,7 +47,7 @@ jobs:
           curl -sL "$LATEST_SINGBOX" | tar -xz
           SINGBOX_BIN=$(find . -name "sing-box" -type f)
           
-          $SINGBOX_BIN rule-set compile no_cn.json -o "./output/!cn.srs"
+          $SINGBOX_BIN rule-set compile no_cn.json -o "./output/geoip-no-cn.srs"
           rm -rf ./output/text/
 
       - name: Git push assets to "release" branch
