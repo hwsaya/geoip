@@ -1,8 +1,6 @@
 name: Build geoip files
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * 4"
   push:
     branches:
       - master
@@ -20,11 +18,11 @@ jobs:
         with:
           go-version-file: ./go.mod
 
-      - name: Download GeoLite2 CSV from Upstream
+      - name: Download GeoLite2 CSV
         run: |
           mkdir -p geolite2
           mkdir -p output
-          # 直接拉取 Loyalsoldier 仓库 release 分支的原始数据，确保 100% 兼容
+          rm -rf ./output/*
           BASE_URL="https://raw.githubusercontent.com/Loyalsoldier/geoip/release"
           curl -L "${BASE_URL}/GeoLite2-Country-Blocks-IPv4.csv" -o ./geolite2/GeoLite2-Country-Blocks-IPv4.csv
           curl -L "${BASE_URL}/GeoLite2-Country-Blocks-IPv6.csv" -o ./geolite2/GeoLite2-Country-Blocks-IPv6.csv
@@ -44,16 +42,7 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b release
-          
-          # 关键：使用 git add . 避免处理 !cn.srs 时的 Shell 转义报错
           git add .
-          
-          # 检查是否有文件更新
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
-          
           git commit -m "Update GeoIP: $(date +%Y%m%d)"
           git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
           git push -f origin release
