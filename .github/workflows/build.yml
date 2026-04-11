@@ -31,39 +31,34 @@ jobs:
           echo "RELEASE_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
         shell: bash
 
-      - name: Download GeoLite2 CSV from sapics
+      - name: Download GeoLite2 databases from Mirror
         run: |
-          mkdir -p geolite2
           mkdir -p output
-          # 下载国家库 CSV
-          curl -L "https://raw.githubusercontent.com/sapics/ip-location-db/master/geolite2-country/geolite2-country-ipv4.csv" -o geolite2/GeoLite2-Country-Blocks-IPv4.csv
-          curl -L "https://raw.githubusercontent.com/sapics/ip-location-db/master/geolite2-country/geolite2-country-ipv6.csv" -o geolite2/GeoLite2-Country-Blocks-IPv6.csv
-          curl -L "https://raw.githubusercontent.com/sapics/ip-location-db/master/geolite2-country/geolite2-country-locations-en.csv" -o geolite2/GeoLite2-Country-Locations-en.csv
-          # 下载 ASN 库 CSV
-          curl -L "https://raw.githubusercontent.com/sapics/ip-location-db/master/geolite2-asn/geolite2-asn-ipv4.csv" -o geolite2/GeoLite2-ASN-Blocks-IPv4.csv
-          curl -L "https://raw.githubusercontent.com/sapics/ip-location-db/master/geolite2-asn/geolite2-asn-ipv6.csv" -o geolite2/GeoLite2-ASN-Blocks-IPv6.csv
+          # 使用 P3TERX 的镜像下载官方格式的 ZIP 包
+          curl -L "https://github.com/P3TERX/GeoLite.mmdb/releases/download/download/GeoLite2-Country-CSV.zip" -o ./output/GeoLite2-Country-CSV.zip
+          curl -L "https://github.com/P3TERX/GeoLite.mmdb/releases/download/download/GeoLite2-ASN-CSV.zip" -o ./output/GeoLite2-ASN-CSV.zip
+
+      - name: Prepare GeoLite2 databases
+        run: |
+          # 解压并整理文件路径，以适配 config.json
+          mkdir -p geolite2
+          unzip ./output/GeoLite2-Country-CSV.zip -d ./
+          unzip ./output/GeoLite2-ASN-CSV.zip -d ./
+          
+          # 将解压出来的带日期后缀的文件夹里的 CSV 移动到 geolite2 根目录
+          mv GeoLite2-Country-CSV_*/*.csv ./geolite2/
+          mv GeoLite2-ASN-CSV_*/*.csv ./geolite2/
 
       - name: Build geoip files
         run: |
           go build ./
           ./geoip convert -c ./config.json
 
-      - name: Verify mmdb files
-        run: |
-          cd ./output || exit 1
-          go install -v github.com/maxmind/mmdbverify@latest
-          # 仅当生成了 mmdb 文件时才校验
-          if ls *.mmdb 1> /dev/null 2>&1; then
-            for name in $(ls *.mmdb); do
-              $(go env GOPATH)/bin/mmdbverify -file ${name}
-            done
-          fi
-
       - name: Generate sha256 checksum
         run: |
           cd ./output || exit 1
-          # 为所有生成的文件生成校验和
-          find . -maxdepth 1 -type f \( -name "*.dat" -o -name "*.mmdb" -o -name "*.srs" -o -name "*.mrs" \) -exec sh -c 'sha256sum "$1" > "$1.sha256sum"' _ {} \;
+          # 为生成的所有规则文件生成校验和
+          find . -maxdepth 1 -type f \( -name "*.dat" -o -name "*.srs" -o -name "*.mrs" \) -exec sh -c 'sha256sum "$1" > "$1.sha256sum"' _ {} \;
 
       - name: Git push assets to "release" branch
         run: |
