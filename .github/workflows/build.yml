@@ -16,12 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout codebase
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
           go-version-file: ./go.mod
 
@@ -31,32 +31,17 @@ jobs:
           echo "RELEASE_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
         shell: bash
 
-      - name: Download GeoLite2 databases
-        env:
-          LICENSE_KEY: ${{ secrets.MAXMIND_GEOLITE2_LICENSE }}
+      - name: Download GeoLite2 CSV from sapics
         run: |
-          mkdir -p output
-          curl -L "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN&license_key=${LICENSE_KEY}&suffix=tar.gz" -o ./output/GeoLite2-ASN.tar.gz
-          curl -L "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN-CSV&license_key=${LICENSE_KEY}&suffix=zip" -o ./output/GeoLite2-ASN-CSV.zip
-          curl -L "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=${LICENSE_KEY}&suffix=tar.gz" -o ./output/GeoLite2-Country.tar.gz
-          curl -L "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country-CSV&license_key=${LICENSE_KEY}&suffix=zip" -o ./output/GeoLite2-Country-CSV.zip
-
-      - name: Prepare GeoLite2 databases
-        run: |
-          cp ./output/{*.gz,*.zip} ./
-          unzip GeoLite2-Country-CSV.zip
-          unzip GeoLite2-ASN-CSV.zip
-          tar -xvzf GeoLite2-Country.tar.gz
-          tar -xvzf GeoLite2-ASN.tar.gz
-
-          cp GeoLite2-Country_*/*.mmdb ./output/
-          cp GeoLite2-ASN_*/*.mmdb ./output/
-          cp GeoLite2-Country-CSV_*/{GeoLite2-Country-Blocks-*,GeoLite2-Country-Locations-en,GeoLite2-Country-Locations-zh-CN}.csv ./output/
-          cp GeoLite2-ASN-CSV_*/*.csv ./output/
-
           mkdir -p geolite2
-          cp GeoLite2-Country-CSV_*/*.csv ./geolite2/
-          cp GeoLite2-ASN-CSV_*/*.csv ./geolite2/
+          mkdir -p output
+          # 下载国家库 CSV
+          curl -L "https://raw.githubusercontent.com/sapics/ip-location-db/master/geolite2-country/geolite2-country-ipv4.csv" -o geolite2/GeoLite2-Country-Blocks-IPv4.csv
+          curl -L "https://raw.githubusercontent.com/sapics/ip-location-db/master/geolite2-country/geolite2-country-ipv6.csv" -o geolite2/GeoLite2-Country-Blocks-IPv6.csv
+          curl -L "https://raw.githubusercontent.com/sapics/ip-location-db/master/geolite2-country/geolite2-country-locations-en.csv" -o geolite2/GeoLite2-Country-Locations-en.csv
+          # 下载 ASN 库 CSV
+          curl -L "https://raw.githubusercontent.com/sapics/ip-location-db/master/geolite2-asn/geolite2-asn-ipv4.csv" -o geolite2/GeoLite2-ASN-Blocks-IPv4.csv
+          curl -L "https://raw.githubusercontent.com/sapics/ip-location-db/master/geolite2-asn/geolite2-asn-ipv6.csv" -o geolite2/GeoLite2-ASN-Blocks-IPv6.csv
 
       - name: Build geoip files
         run: |
@@ -67,23 +52,18 @@ jobs:
         run: |
           cd ./output || exit 1
           go install -v github.com/maxmind/mmdbverify@latest
-          for name in $(ls *.mmdb); do
-            $(go env GOPATH)/bin/mmdbverify -file ${name}
-          done
+          # 仅当生成了 mmdb 文件时才校验
+          if ls *.mmdb 1> /dev/null 2>&1; then
+            for name in $(ls *.mmdb); do
+              $(go env GOPATH)/bin/mmdbverify -file ${name}
+            done
+          fi
 
-      - name: Generate sha256 checksum for dat files
+      - name: Generate sha256 checksum
         run: |
           cd ./output || exit 1
-          for name in $(ls *.dat); do
-            sha256sum ${name} > ./${name}.sha256sum
-          done
-
-      - name: Generate sha256 checksum for mmdb files
-        run: |
-          cd ./output || exit 1
-          for name in $(ls *.mmdb); do
-            sha256sum ${name} > ./${name}.sha256sum
-          done
+          # 为所有生成的文件生成校验和
+          find . -maxdepth 1 -type f \( -name "*.dat" -o -name "*.mmdb" -o -name "*.srs" -o -name "*.mrs" \) -exec sh -c 'sha256sum "$1" > "$1.sha256sum"' _ {} \;
 
       - name: Git push assets to "release" branch
         run: |
@@ -96,21 +76,6 @@ jobs:
           git commit -m "${{ env.RELEASE_NAME }}"
           git remote add geoip "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
           git push -f -u geoip release
-
-      - name: Purge jsdelivr CDN
-        run: |
-          cd output || exit 1
-          for file in $(ls); do
-            curl -i "https://purge.jsdelivr.net/gh/${{ github.repository }}@release/${file}"
-          done
-
-      - name: Remove some files to avoid publishing to GitHub release
-        run: |
-          rm -rf ./output/*.{gz,zip}
-          rm -rf ./output/GeoLite2-*.csv
-          rm -rf ./output/GeoLite2-*.mmdb
-          rm -rf ./output/GeoLite2-*.sha256sum
-          rm -rf ./output/{clash,dat,mrs,nginx,srs,surge,text}
 
       - name: Upload files to GitHub release
         uses: svenstaro/upload-release-action@v2
