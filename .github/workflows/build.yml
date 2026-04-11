@@ -34,23 +34,31 @@ jobs:
       - name: Download GeoLite2 databases from Mirror
         run: |
           mkdir -p output
-          # 使用 jsDelivr 加速下载 P3TERX 维护的官方格式 ZIP 包
-          curl -L "https://cdn.jsdelivr.net/gh/P3TERX/GeoLite.mmdb@download/GeoLite2-Country-CSV.zip" -o ./output/GeoLite2-Country-CSV.zip
-          curl -L "https://cdn.jsdelivr.net/gh/P3TERX/GeoLite.mmdb@download/GeoLite2-ASN-CSV.zip" -o ./output/GeoLite2-ASN-CSV.zip
+          # 使用 P3TERX 的原生 GitHub Release 链接，不走 jsDelivr
+          curl -L "https://github.com/P3TERX/GeoLite.mmdb/releases/download/download/GeoLite2-Country-CSV.zip" -o ./output/GeoLite2-Country-CSV.zip
+          curl -L "https://github.com/P3TERX/GeoLite.mmdb/releases/download/download/GeoLite2-ASN-CSV.zip" -o ./output/GeoLite2-ASN-CSV.zip
+          
+          # 检查文件大小：如果小于 1MB，说明下载的是错误页面
+          COUNTRY_SIZE=$(stat -c%s "./output/GeoLite2-Country-CSV.zip")
+          if [ $COUNTRY_SIZE -lt 1048576 ]; then
+            echo "Error: GeoLite2-Country-CSV.zip is too small ($COUNTRY_SIZE bytes), download failed!"
+            exit 1
+          fi
 
       - name: Prepare GeoLite2 databases
         run: |
           mkdir -p geolite2
-          # 解压到临时目录
+          # 强制覆盖解压
           unzip -o ./output/GeoLite2-Country-CSV.zip -d ./temp_country
           unzip -o ./output/GeoLite2-ASN-CSV.zip -d ./temp_asn
           
-          # 查找解压出的 CSV 文件并移动到 geolite2 文件夹
-          # 这样写可以无视文件夹里的日期后缀（如 GeoLite2-Country-CSV_20260407）
-          find ./temp_country -name "*.csv" -exec mv {} ./geolite2/ \;
-          find ./temp_asn -name "*.csv" -exec mv {} ./geolite2/ \;
+          # 递归查找所有 CSV 文件并移动到 geolite2 目录，同时统一文件名
+          find ./temp_country -name "GeoLite2-Country-Blocks-IPv4.csv" -exec mv {} ./geolite2/GeoLite2-Country-Blocks-IPv4.csv \;
+          find ./temp_country -name "GeoLite2-Country-Blocks-IPv6.csv" -exec mv {} ./geolite2/GeoLite2-Country-Blocks-IPv6.csv \;
+          find ./temp_country -name "GeoLite2-Country-Locations-en.csv" -exec mv {} ./geolite2/GeoLite2-Country-Locations-en.csv \;
+          find ./temp_asn -name "GeoLite2-ASN-Blocks-IPv4.csv" -exec mv {} ./geolite2/GeoLite2-ASN-Blocks-IPv4.csv \;
+          find ./temp_asn -name "GeoLite2-ASN-Blocks-IPv6.csv" -exec mv {} ./geolite2/GeoLite2-ASN-Blocks-IPv6.csv \;
           
-          # 清理临时目录
           rm -rf temp_country temp_asn
 
       - name: Build geoip files
