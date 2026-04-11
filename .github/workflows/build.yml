@@ -22,6 +22,7 @@ jobs:
         run: |
           mkdir -p geolite2
           mkdir -p output
+          # 彻底清理本地目录，防止残留
           rm -rf ./output/*
           BASE_URL="https://raw.githubusercontent.com/Loyalsoldier/geoip/release"
           curl -L "${BASE_URL}/GeoLite2-Country-Blocks-IPv4.csv" -o ./geolite2/GeoLite2-Country-Blocks-IPv4.csv
@@ -33,16 +34,24 @@ jobs:
       - name: Build geoip files
         run: |
           go build ./
+          # 执行转换，只生成 config.json 规定的文件
           ./geoip convert -c ./config.json
 
       - name: Git push assets to "release" branch
         run: |
           cd output || exit 1
+          # 初始化一个全新的 Git 仓库，确保没有任何旧历史
           git init
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b release
+          
+          # 打印一下，确认现在 output 文件夹里只有你要的文件
+          echo "Final files in output:"
+          ls -R
+          
           git add .
-          git commit -m "Update GeoIP: $(date +%Y%m%d)"
+          git commit -m "Clean build: $(date +%Y%m%d)"
+          # 强制推送：这会用本地的“干净”状态彻底覆盖掉远程的 release 分支
           git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
           git push -f origin release
