@@ -22,18 +22,31 @@ jobs:
         run: |
           mkdir -p geolite2
           mkdir -p output
+          rm -rf ./output/*
           BASE_URL="https://raw.githubusercontent.com/Loyalsoldier/geoip/release"
           curl -L "${BASE_URL}/GeoLite2-Country-Blocks-IPv4.csv" -o ./geolite2/GeoLite2-Country-Blocks-IPv4.csv
           curl -L "${BASE_URL}/GeoLite2-Country-Blocks-IPv6.csv" -o ./geolite2/GeoLite2-Country-Blocks-IPv6.csv
           curl -L "${BASE_URL}/GeoLite2-Country-Locations-en.csv" -o ./geolite2/GeoLite2-Country-Locations-en.csv
 
-      - name: Build geoip files
+      - name: Build and Merge IP lists
         run: |
           go build ./
           ./geoip convert -c ./config.json
-          # 核心调试：看看 output 文件夹里到底生成了什么
-          echo "------ 查看生成的目录结构 ------"
-          ls -R ./output
+          
+          cat ./output/text/*.txt | ./geoip merge -t ipv4 > merged_ipv4.txt
+          cat ./output/text/*.txt | ./geoip merge -t ipv6 > merged_ipv6.txt
+          cat merged_ipv4.txt merged_ipv6.txt > all_non_cn.txt
+          
+          jq -R -s -c 'split("\n") | map(select(length > 0)) | {version: 1, rules: [{ip_cidr: .}]}' all_non_cn.txt > no_cn.json
+
+      - name: Compile sing-box SRS
+        run: |
+          LATEST_SINGBOX=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep "browser_download_url.*linux-amd64.tar.gz" | cut -d '"' -f 4)
+          curl -sL "$LATEST_SINGBOX" | tar -xz
+          SINGBOX_BIN=$(find . -name "sing-box" -type f)
+          
+          $SINGBOX_BIN rule-set compile no_cn.json -o "./output/!cn.srs"
+          rm -rf ./output/text/
 
       - name: Git push assets to "release" branch
         run: |
@@ -42,7 +55,13 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b release
+          
           git add .
-          git commit -m "Update: $(date +%Y%m%d)"
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git commit -m "Update GeoIP: $(date +%Y%m%d)"
           git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
           git push -f origin release
